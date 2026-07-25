@@ -9,10 +9,21 @@ const SIMULATE_FAILURE = process.env.SIMULATE_FAILURE === 'true';
 
 function createApp() {
   const app = express();
+  const startedAt = Date.now();
+  const startupDelaySeconds = Number(process.env.STARTUP_DELAY_SECONDS || 0);
+
   app.use(express.json());
   app.use(express.static(path.join(__dirname, 'public')));
 
   app.get('/health', (req, res) => {
+    const elapsedSeconds = (Date.now() - startedAt) / 1000;
+    if (startupDelaySeconds > 0 && elapsedSeconds < startupDelaySeconds) {
+      return res.status(503).json({
+        status: 'starting',
+        readyInSeconds: Math.ceil(startupDelaySeconds - elapsedSeconds),
+      });
+    }
+
     if (SIMULATE_FAILURE || !db.canAccessDb()) {
       return res.status(500).json({ status: 'error', reason: 'fallo simulado o base de datos no accesible' });
     }

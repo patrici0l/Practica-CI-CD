@@ -48,20 +48,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: Extraer metadatos (tags)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Etiqueta con "latest" (si es la rama por defecto) y con el "hash del commit"
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
+      - name: Definir tags de la imagen
+        id: tags
+        run: |
+          echo "sha_tag=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${REGISTRY}/${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
 
-      - name: Construir y publicar imagen Docker
+      - name: Construir imagen Docker para escaneo
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          tags: |
+            ${{ steps.tags.outputs.sha_tag }}
+            ${{ steps.tags.outputs.latest_tag }}
+
+      - name: Escanear imagen con Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.tags.outputs.sha_tag }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          exit-code: '1'
+
+      - name: Publicar imagen con hash del commit
+        run: docker push "${{ steps.tags.outputs.sha_tag }}"
+
+      - name: Publicar imagen latest
+        run: docker push "${{ steps.tags.outputs.latest_tag }}"

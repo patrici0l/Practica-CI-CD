@@ -55,6 +55,28 @@ test('GET /health responde 200 y status ok', async () => {
   server.close();
 });
 
+test('GET /health responde 503 durante STARTUP_DELAY_SECONDS', async () => {
+  const previousDelay = process.env.STARTUP_DELAY_SECONDS;
+  process.env.STARTUP_DELAY_SECONDS = '60';
+
+  const app = createApp();
+  const server = await startServer(app);
+
+  try {
+    const res = await request(server, 'GET', '/health');
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(res.body.status, 'starting');
+    assert.ok(res.body.readyInSeconds > 0);
+  } finally {
+    server.close();
+    if (previousDelay === undefined) {
+      delete process.env.STARTUP_DELAY_SECONDS;
+    } else {
+      process.env.STARTUP_DELAY_SECONDS = previousDelay;
+    }
+  }
+});
+
 test('GET /version responde con version y color', async () => {
   const app = createApp();
   const server = await startServer(app);

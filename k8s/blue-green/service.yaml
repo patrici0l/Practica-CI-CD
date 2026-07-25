@@ -6,7 +6,7 @@ spec:
   type: NodePort
   selector:
     app: inventario-app
-    version: v2   #cambiamos para que apunte a la version verde y corte de trafico 
+    version: v1
   ports:
     - port: 80
       targetPort: 3000

@@ -1,5 +1,5 @@
-# --- ETAPA 1: Build y Test ---
-FROM node:20-alpine AS builder
+# --- ETAPA 1: Dependencias y pruebas ---
+FROM node:20-alpine AS test
 WORKDIR /app
 
 # Copiamos solo los archivos de dependencias primero (optimización de caché)
@@ -16,21 +16,22 @@ RUN npm test
 # --- ETAPA 2: Imagen Final ---
 FROM node:20-alpine AS runner
 WORKDIR /app
+ENV NODE_ENV=production
 
 # Copiamos package.json y package-lock.json
 COPY package*.json ./
 # Instalamos SOLO dependencias de producción (más ligero y seguro)
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Copiamos el código fuente necesario (incluida la carpeta public)
-COPY server.js .
-COPY db.js .
-COPY public/ ./public/
+# Copiamos el código fuente necesario desde la etapa que ya pasó las pruebas
+COPY --from=test /app/server.js .
+COPY --from=test /app/db.js .
+COPY --from=test /app/public/ ./public/
 # Creamos la carpeta data donde la app guarda su base de datos JSON local
-RUN mkdir data
+RUN mkdir -p data
 
 # Exponemos el puerto
 EXPOSE 3000
 
 # Comando de inicio
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

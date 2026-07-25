@@ -1,118 +1,208 @@
-# inventario-app con CI/CD Completo
+# inventario-app con CI/CD
 
-Este repositorio contiene la aplicación **inventario-app** modificada para cumplir con todos los requerimientos de la práctica de CI/CD. Incluye el proceso de automatización desde la construcción de imágenes hasta estrategias de despliegue avanzado en Kubernetes con buenas prácticas.
+Aplicacion Node.js/Express para practicar Docker, GitHub Actions, GHCR y despliegues en Kubernetes con Minikube. La base de datos es un archivo JSON local dentro del contenedor, por lo que los datos creados en un pod pueden perderse al recrearlo.
 
-## Qué es
+Repositorio publico: https://github.com/patrici0l/Practica-CI-CD
 
-Una app Node.js/Express con:
-- **Interfaz web** para listar, crear y borrar productos del inventario.
-- **Base de datos local efímera** (`db.js`) basada en un JSON local (demostrando la volatilidad de los Pods en K8s).
-- **API REST**.
+## 1. Ejecucion local
 
----
-
-## 1. Ejecutar localmente (Sin Docker)
-
-```bash
-# 1. Instalar dependencias
-npm install
-
-# 2. Correr pruebas unitarias
+```powershell
+npm ci
 npm test
-
-# 3. Iniciar la aplicación
 npm start
-# Abrir en navegador: http://localhost:3000
 ```
 
----
+Abrir: http://localhost:3000
 
-## 2. Dockerización (Dockerfile Multi-stage)
+## 2. Docker local
 
-El proyecto cuenta con un `Dockerfile` multi-etapa que sigue el principio **fail-fast**: ejecuta las pruebas durante la construcción y falla si no pasan, evitando crear imágenes defectuosas.
+El `Dockerfile` es multi-stage. La etapa `test` instala dependencias y ejecuta `npm test`; la imagen final copia el codigo desde esa etapa, asi que el build falla si las pruebas fallan.
 
-**Comandos para probar localmente:**
-```bash
-# Construir la imagen
-docker build -t inventario-app:local .
-
-# Ejecutar el contenedor
+```powershell
+docker build --no-cache -t inventario-app:local .
 docker run -d -p 3000:3000 --name mi-inventario inventario-app:local
 
-# Detenerlo y borrarlo
+curl.exe http://localhost:3000/
+curl.exe http://localhost:3000/health
+curl.exe http://localhost:3000/version
+curl.exe http://localhost:3000/api/products
+
 docker rm -f mi-inventario
 ```
 
----
+## 3. CI/CD y GHCR
 
-## 3. Pipeline CI/CD en GitHub Actions
+El workflow `.github/workflows/ci-cd.yml` tiene dos jobs encadenados:
 
-El archivo `.github/workflows/ci-cd.yml` orquesta la construcción, prueba y despliegue hacia **GitHub Container Registry (ghcr.io)**. 
-- Contiene dos jobs: `build-test` y `build-push`.
-- Etiqueta automáticamente la imagen con el hash del commit y la etiqueta `latest`.
-- **Componente adicional (Escaneo de Seguridad):** Integra `Trivy` para escanear la imagen localmente buscando vulnerabilidades. El pipeline está configurado para **fallar** si encuentra vulnerabilidades de severidad `CRITICAL`.
+- `build-test`: ejecuta `npm ci` y `npm test`.
+- `build-push`: solo corre si `build-test` fue exitoso; construye la imagen, la escanea con Trivy y luego publica en GHCR con dos tags: hash completo del commit y `latest`.
 
-**Reproducir:** Basta con hacer un `git push` a la rama `main` para detonar el flujo.
+```powershell
+git add .
+git commit -m "fix: completar requisitos de ci cd"
+git push origin main
+```
 
----
+Verificar:
 
-## 4. Estrategia de Despliegue: Blue-Green
+```powershell
+$repo = "patrici0l/Practica-CI-CD"
+Invoke-RestMethod -Headers @{"User-Agent"="curl"} "https://api.github.com/repos/$repo/actions/runs?per_page=5" |
+  Select-Object -ExpandProperty workflow_runs |
+  Select-Object head_sha,status,conclusion,created_at,updated_at,html_url
+```
 
-Se eligió **Blue-Green** porque la aplicación puede cambiar su versión visual únicamente pasando variables de entorno (`APP_VERSION` y `APP_COLOR`), sin requerir compilar una nueva imagen. Esto permite redireccionar todo el tráfico (100%) sin interrupción del servicio (Zero-downtime).
+Paquete publicado: https://github.com/patrici0l/Practica-CI-CD/pkgs/container/practica-ci-cd
 
-**Comandos para reproducir la demostración:**
+## 4. Rolling update base en Minikube
 
-```bash
-# 1. Aplicar la versión Blue y el Service
+```powershell
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl rollout status deployment/inventario-app
+kubectl get pods,svc
+
+minikube service inventario-service --url
+```
+
+Con la URL que entregue Minikube:
+
+```powershell
+$url = "PEGAR_URL_DE_MINIKUBE"
+curl.exe "$url/health"
+curl.exe "$url/version"
+curl.exe "$url/api/products"
+```
+
+Para demostrar la perdida de datos locales:
+
+1. Abrir la app con `minikube service inventario-service`.
+2. Crear un producto desde la interfaz.
+3. Eliminar un pod:
+
+```powershell
+kubectl get pods -l app=inventario-app
+kubectl delete pod NOMBRE_DEL_POD
+kubectl get pods -w
+```
+
+Al volver a consultar la app, el producto puede desaparecer o aparecer segun el pod que atienda la peticion. Esto ocurre porque cada pod tiene su propio archivo JSON local.
+
+## 5. Blue-Green
+
+Se eligio Blue-Green porque esta app permite distinguir versiones por variables de entorno (`APP_VERSION` y `APP_COLOR`) y conviene demostrar un cambio del 100% del trafico de forma inmediata con recursos nativos de Kubernetes: dos `Deployment` y un `Service` cuyo selector cambia de `v1` a `v2`.
+
+Crear primero el Secret que necesita la version Green. El valor se genera en la terminal y no se guarda en archivos versionados.
+
+```powershell
+$env:API_KEY_VALUE = "api-" + [guid]::NewGuid().ToString()
+kubectl create secret generic api-secret --from-literal=API_KEY="$env:API_KEY_VALUE" --dry-run=client -o yaml | kubectl apply -f -
+Remove-Item Env:\API_KEY_VALUE
+```
+
+Aplicar Blue, Green y el Service apuntando inicialmente a Blue:
+
+```powershell
 kubectl apply -f k8s/blue-green/deployment-blue.yaml
 kubectl apply -f k8s/blue-green/deployment-green.yaml
 kubectl apply -f k8s/blue-green/service.yaml
 
-# 2. Verificar que ambos deployments están arriba
-kubectl get pods
+kubectl rollout status deployment/inventario-app-blue
+kubectl rollout status deployment/inventario-app-green
+kubectl get pods -l app=inventario-app
 
-# 3. Acceder al servicio (Mostrará versión v1 - Blue)
-minikube service inventario-service-bg
+minikube service inventario-service-bg --url
 ```
 
-Para hacer el **corte de tráfico**:
-1. Editar `k8s/blue-green/service.yaml` y cambiar el selector `version: v1` por `version: v2`.
-2. Aplicar el cambio:
-```bash
-kubectl apply -f k8s/blue-green/service.yaml
-```
-3. Refrescar el navegador: El cambio a la versión Green (v2) será instantáneo.
+Antes del corte debe responder `v1`:
 
----
-
-## 5. Componentes de Buenas Prácticas Implementados
-
-Para obtener los puntos extra de la rúbrica, se implementaron **los tres componentes adicionales**.
-
-### A. Manejo de Secretos (SecretManagement)
-Se evita exponer secretos en el código o en los manifiestos YAML guardados en Git.
-**Reproducir:**
-```bash
-# 1. Crear el secreto directamente en el clúster
-kubectl create secret generic api-secret --from-literal=API_KEY=mi-clave-super-secreta-123
-
-# 2. Aplicar el Deployment Green que inyecta el secreto como variable de entorno
-kubectl apply -f k8s/blue-green/deployment-green.yaml
-
-# 3. Entrar al pod para comprobar que la variable existe
-kubectl exec -it deployment/inventario-app-green -- sh -c 'echo $API_KEY'
+```powershell
+$bgUrl = "PEGAR_URL_DE_MINIKUBE_BG"
+curl.exe "$bgUrl/version"
 ```
 
-### B. Escaneo de Seguridad en CI (Trivy)
-Implementado directamente en el archivo `.github/workflows/ci-cd.yml` (sección 3). Trivy bloquea el despliegue si detecta fallas críticas en el sistema operativo o librerías de la imagen base.
+Corte de trafico a Green:
 
-### C. Readiness Realista (Arranque Lento)
-Se modificó `server.js` para incluir un tiempo de bloqueo de inicio gobernado por la variable de entorno `STARTUP_DELAY_SECONDS`. Durante ese tiempo, `/health` devuelve código `503`.
-**Reproducir:**
-1. En `k8s/blue-green/deployment-green.yaml`, la variable `STARTUP_DELAY_SECONDS` está definida en `20`.
-2. El `readinessProbe` tiene un `failureThreshold: 6` y un `periodSeconds: 5` (tolera 30 segundos de espera total).
-3. Kubernetes monitoreará y no matará prematuramente el contenedor, marcándolo como "Ready" recién a partir de los 20 segundos. 
-```bash
-# Observa cómo el pod tarda 20 segundos en pasar al estado READY 1/1
-kubectl get pods -w
+```powershell
+kubectl patch service inventario-service-bg -p '{"spec":{"selector":{"app":"inventario-app","version":"v2"}}}'
+kubectl get service inventario-service-bg -o yaml
+curl.exe "$bgUrl/version"
 ```
+
+Despues del corte debe responder `v2`.
+
+## 6. Componentes adicionales
+
+### Secretos
+
+El Secret se crea con `kubectl create secret` y se consume con `secretKeyRef` en `k8s/blue-green/deployment-green.yaml`.
+
+```powershell
+kubectl exec deployment/inventario-app-green -- printenv API_KEY
+git grep -n "mi-clave-super-secreta"
+```
+
+El segundo comando no debe devolver resultados.
+
+### Escaneo con Trivy
+
+El workflow escanea la imagen antes de publicarla:
+
+```yaml
+uses: aquasecurity/trivy-action@0.28.0
+severity: CRITICAL
+exit-code: '1'
+```
+
+Si Trivy encuentra vulnerabilidades `CRITICAL`, el job falla y los pasos `docker push` no se ejecutan.
+
+### Readiness con arranque lento
+
+La variable `STARTUP_DELAY_SECONDS` hace que `/health` devuelva `503` durante los primeros segundos de vida del proceso. En Green esta configurada en `20` segundos y el `readinessProbe` tolera ese arranque con `periodSeconds: 5` y `failureThreshold: 6`.
+
+```powershell
+kubectl rollout restart deployment/inventario-app-green
+kubectl get pods -l app=inventario-app,version=v2 -w
+```
+
+En otra terminal, durante el arranque:
+
+```powershell
+$pod = kubectl get pods -l app=inventario-app,version=v2 -o jsonpath='{.items[0].metadata.name}'
+kubectl describe pod $pod
+```
+
+En los eventos debe verse que la readiness probe falla temporalmente con HTTP 503 y luego el pod pasa a `READY 1/1`.
+
+## 7. Datos para metricas DORA
+
+Timestamps de commits:
+
+```powershell
+git log --pretty=format:"%h %cI %s"
+```
+
+Timestamps de GitHub Actions:
+
+```powershell
+$repo = "patrici0l/Practica-CI-CD"
+Invoke-RestMethod -Headers @{"User-Agent"="curl"} "https://api.github.com/repos/$repo/actions/runs?per_page=10" |
+  Select-Object -ExpandProperty workflow_runs |
+  Select-Object head_sha,conclusion,created_at,updated_at,html_url
+```
+
+Registrar despliegue real al cluster:
+
+```powershell
+$sha = "PEGAR_HASH_COMPLETO_DEL_COMMIT"
+Get-Date -Format o
+kubectl set image deployment/inventario-app inventario-app=ghcr.io/patrici0l/practica-ci-cd:$sha
+kubectl rollout status deployment/inventario-app
+Get-Date -Format o
+```
+
+Calculos para el informe:
+
+- Lead time for changes: hora final del `rollout status` menos timestamp del commit. Reportar al menos dos cambios.
+- Frecuencia de despliegue: cantidad de promociones reales al Deployment (`kubectl set image` o equivalente) dividida entre los dias de trabajo.
+- Change failure rate: despliegues que necesitaron rollback o correccion posterior dividido entre el total de despliegues, multiplicado por 100.
