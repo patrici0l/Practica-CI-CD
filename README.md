@@ -149,7 +149,7 @@ El segundo comando no debe devolver resultados.
 El workflow escanea la imagen antes de publicarla:
 
 ```yaml
-uses: aquasecurity/trivy-action@0.28.0
+uses: aquasecurity/trivy-action@0.35.0
 severity: CRITICAL
 exit-code: '1'
 ```
