@@ -17,11 +17,14 @@ RUN npm test
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk upgrade --no-cache
 
 # Copiamos package.json y package-lock.json
 COPY package*.json ./
 # Instalamos SOLO dependencias de producción (más ligero y seguro)
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev \
+  && npm cache clean --force \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Copiamos el código fuente necesario desde la etapa que ya pasó las pruebas
 COPY --from=test /app/server.js .
