@@ -54,6 +54,15 @@ jobs:
           echo "sha_tag=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "latest_tag=${REGISTRY}/${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
 
+      - name: Descargar imagen base con reintentos
+        run: |
+          for attempt in 1 2 3; do
+            docker pull node:20-alpine && exit 0
+            echo "Intento ${attempt} fallido; esperando antes de reintentar..."
+            sleep 10
+          done
+          docker pull node:20-alpine
+
       - name: Construir imagen Docker para escaneo
         uses: docker/build-push-action@v5
         with:
