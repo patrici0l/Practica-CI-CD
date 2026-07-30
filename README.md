@@ -169,8 +169,7 @@ En otra terminal, durante el arranque:
 
 ```powershell
 $pod = kubectl get pods -l app=inventario-app,version=v2 -o jsonpath='{.items[0].metadata.name}'
-kubectl dcls
-escribe pod $pod
+kubectl describe pod $pod
 ```
 
 En los eventos debe verse que la readiness probe falla temporalmente con HTTP 503 y luego el pod pasa a `READY 1/1`.
