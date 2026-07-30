@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: inventario-app-green
 spec:
+  # Green es la version candidata v2.
   replicas: 2
   selector:
     matchLabels:
@@ -18,20 +19,24 @@ spec:
         - name: inventario-app
           image: ghcr.io/patrici0l/practica-ci-cd:latest
           env:
+            # Estas variables permiten identificar Green desde /version.
             - name: APP_VERSION
               value: "v2"
             - name: APP_COLOR
               value: "green"
             - name: API_KEY
               valueFrom:
+                # La clave sensible viene de Kubernetes Secret, no del repositorio.
                 secretKeyRef:
                   name: api-secret
                   key: API_KEY
             - name: STARTUP_DELAY_SECONDS
+              # Simula arranque lento para demostrar readinessProbe.
               value: "20"
           ports:
             - containerPort: 3000
           readinessProbe:
+            # Mientras /health falle, Kubernetes no envia trafico a Green.
             httpGet:
               path: /health
               port: 3000

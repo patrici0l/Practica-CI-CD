@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const TEST_DB = path.join(__dirname, 'data', 'test-products.json');
+// Las pruebas usan una base JSON separada para no tocar datos reales/locales.
 process.env.DB_PATH = TEST_DB;
 
 const { createApp } = require('./server');
@@ -56,6 +57,7 @@ test('GET /health responde 200 y status ok', async () => {
 });
 
 test('GET /health responde 503 durante STARTUP_DELAY_SECONDS', async () => {
+  // Esta prueba respalda la readinessProbe usada en Kubernetes.
   const previousDelay = process.env.STARTUP_DELAY_SECONDS;
   process.env.STARTUP_DELAY_SECONDS = '60';
 

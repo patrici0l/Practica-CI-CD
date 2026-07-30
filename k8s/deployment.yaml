@@ -3,13 +3,16 @@ kind: Deployment
 metadata:
   name: inventario-app
 spec:
+  # Kubernetes mantiene 2 pods activos de esta aplicacion.
   replicas: 2
+  # RollingUpdate actualiza pods gradualmente, sin bajar toda la app.
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
       maxSurge: 1
   selector:
+    # El Deployment administra pods con esta etiqueta.
     matchLabels:
       app: inventario-app
   template:
@@ -22,12 +25,14 @@ spec:
           image: ghcr.io/patrici0l/practica-ci-cd:latest
           ports:
             - containerPort: 3000
+          # Solo recibe trafico cuando /health responde correctamente.
           readinessProbe:
             httpGet:
               path: /health
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
+          # Si la app deja de responder, Kubernetes puede reiniciar el contenedor.
           livenessProbe:
             httpGet:
               path: /health

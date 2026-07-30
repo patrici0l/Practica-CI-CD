@@ -4,6 +4,7 @@ metadata:
   name: inventario-service-bg
 spec:
   type: NodePort
+  # Cambiar version=v1 a version=v2 mueve el trafico de Blue a Green.
   selector:
     app: inventario-app
     version: v1

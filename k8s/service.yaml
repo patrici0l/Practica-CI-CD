@@ -4,9 +4,11 @@ metadata:
   name: inventario-service
 spec:
   type: NodePort
+  # El Service envia trafico a los pods que tengan app=inventario-app.
   selector:
     app: inventario-app
   ports:
     - port: 80
       targetPort: 3000
+      # Puerto fijo para acceder desde Minikube.
       nodePort: 30080

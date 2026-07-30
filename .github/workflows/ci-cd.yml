@@ -1,5 +1,6 @@
 name: CI/CD Pipeline
 
+# El pipeline corre cuando se suben cambios a la rama principal.
 on:
   push:
     branches:
@@ -11,6 +12,7 @@ env:
   IMAGE_NAME: patrici0l/practica-ci-cd
 
 jobs:
+  # CI: valida el codigo antes de construir o publicar imagen.
   build-test:
     runs-on: ubuntu-latest
     steps:
@@ -29,10 +31,11 @@ jobs:
       - name: Correr pruebas
         run: npm test
 
+  # CD: solo corre si build-test fue exitoso.
   build-push:
     needs: build-test
     runs-on: ubuntu-latest
-    # Se necesitan permisos de escritura para publicar paquetes en GHCR
+    # Permite publicar la imagen en GitHub Container Registry.
     permissions:
       contents: read
       packages: write
@@ -51,6 +54,7 @@ jobs:
       - name: Definir tags de la imagen
         id: tags
         run: |
+          # Se publica una imagen por commit y otra como latest.
           echo "sha_tag=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "latest_tag=${REGISTRY}/${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
 
@@ -67,6 +71,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          # load:true deja la imagen disponible para que Trivy la escanee.
           load: true
           tags: |
             ${{ steps.tags.outputs.sha_tag }}
@@ -78,9 +83,11 @@ jobs:
           image-ref: ${{ steps.tags.outputs.sha_tag }}
           format: table
           vuln-type: os,library
+          # Si hay vulnerabilidades criticas, el pipeline falla.
           severity: CRITICAL
           exit-code: '1'
 
+      # Estos push solo ocurren si el escaneo anterior paso.
       - name: Publicar imagen con hash del commit
         run: docker push "${{ steps.tags.outputs.sha_tag }}"
 
