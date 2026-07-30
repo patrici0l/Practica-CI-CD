@@ -1,77 +1,133 @@
-# Expo clase - CI/CD
+# Expo clase - puntos importantes
 
-Guia corta para mostrar solo lo importante.
+Esta guia es solo para presentar la practica. No es para crear todo desde cero, porque el proyecto y los recursos ya estan hechos.
 
-## 1. Que se hizo
-
-- Se agregaron pruebas en `server.test.js`.
-- Se creo un `Dockerfile` que corre tests antes de construir.
-- Se creo un pipeline en `.github/workflows/ci-cd.yml`.
-- El pipeline prueba, construye, escanea con Trivy y publica en GHCR.
-- Se agrego Kubernetes base con `Deployment` y `Service`.
-- Se agrego Blue-Green con version `v1` y `v2`.
-
-## 2. Comandos para exponer
-
-Entrar al proyecto:
+## 1. Entrar al proyecto
 
 ```powershell
 cd "C:\A_PROJECTS\PRACTICA CI-CD\inventario-app"
 ```
 
-Probar:
+## 2. Mostrar pruebas
 
 ```powershell
 npm test
 ```
 
-Construir Docker:
+Explicacion corta:
+
+> Las pruebas estan en `server.test.js`. El pipeline y el Dockerfile dependen de que estas pruebas pasen.
+
+## 3. Mostrar Docker
+
+Ver el Dockerfile:
+
+```powershell
+Get-Content Dockerfile
+```
+
+Construir imagen para demostrar:
 
 ```powershell
 docker build --no-cache -t inventario-app:local .
 ```
 
-Desplegar base:
+Explicacion corta:
+
+> El Dockerfile es multi-stage. Primero ejecuta `npm test`; si las pruebas fallan, la imagen no se construye.
+
+## 4. Mostrar pipeline
+
+Ver archivo del pipeline:
 
 ```powershell
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl rollout status deployment/inventario-app
+Get-Content .github\workflows\ci-cd.yml
+```
+
+Abrir GitHub Actions:
+
+```text
+https://github.com/patrici0l/Practica-CI-CD/actions
+```
+
+Explicacion corta:
+
+> El pipeline tiene `build-test` y `build-push`. Primero prueba, despues construye, escanea con Trivy y publica en GHCR.
+
+## 5. Mostrar Kubernetes ya desplegado
+
+Ver pods de la practica:
+
+```powershell
 kubectl get pods -l app=inventario-app --show-labels
+```
+
+Ver servicios:
+
+```powershell
+kubectl get svc
+```
+
+Explicacion corta:
+
+> Kubernetes mantiene los pods activos con Deployments y los expone con Services.
+
+## 6. Probar app base
+
+Obtener URL:
+
+```powershell
 minikube service inventario-service --url
 ```
 
-Crear Secret:
+Probar:
 
 ```powershell
-$env:API_KEY_VALUE = "api-" + [guid]::NewGuid().ToString()
-kubectl create secret generic api-secret --from-literal=API_KEY="$env:API_KEY_VALUE" --dry-run=client -o yaml | kubectl apply -f -
-Remove-Item Env:\API_KEY_VALUE
+$url = "PEGAR_URL"
+curl.exe "$url/health"
+curl.exe "$url/version"
 ```
 
-Desplegar Blue-Green:
+## 7. Mostrar Blue-Green
+
+Ver Blue y Green:
 
 ```powershell
-kubectl apply -f k8s/blue-green/deployment-blue.yaml
-kubectl apply -f k8s/blue-green/deployment-green.yaml
-kubectl apply -f k8s/blue-green/service.yaml
-kubectl rollout status deployment/inventario-app-blue
-kubectl rollout status deployment/inventario-app-green
+kubectl get deployments | Select-String "inventario-app"
+kubectl get pods -l app=inventario-app --show-labels
 ```
 
-Probar version:
+Obtener URL Blue-Green:
 
 ```powershell
 minikube service inventario-service-bg --url
-$bgUrl = "PEGAR_URL"
+```
+
+Guardar URL:
+
+```powershell
+$bgUrl = "PEGAR_URL_BG"
+```
+
+Ver version actual:
+
+```powershell
 curl.exe "$bgUrl/version"
 ```
 
-Cambiar a Green:
+## 8. Cambiar de Blue a Green
+
+Enviar trafico a Green:
 
 ```powershell
 kubectl patch service inventario-service-bg -p '{"spec":{"selector":{"app":"inventario-app","version":"v2"}}}'
 curl.exe "$bgUrl/version"
+```
+
+Debe responder:
+
+```json
+{"version":"v2","color":"green"}
 ```
 
 Volver a Blue:
@@ -81,6 +137,34 @@ kubectl patch service inventario-service-bg -p '{"spec":{"selector":{"app":"inve
 curl.exe "$bgUrl/version"
 ```
 
-## 3. Que decir
+Debe responder:
 
-La app pasa por un flujo CI/CD: primero se prueban los cambios, luego Docker construye la imagen, GitHub Actions automatiza el proceso, Trivy escanea seguridad y GHCR guarda la imagen. En Kubernetes se despliega con replicas y Blue-Green permite mover trafico de `v1` a `v2` cambiando el selector del Service.
+```json
+{"version":"v1","color":"blue"}
+```
+
+Explicacion corta:
+
+> Blue-Green no reconstruye la imagen ni borra pods. Solo cambia el selector del Service para mover el trafico entre versiones.
+
+## 9. Mostrar Secret y readiness
+
+Ver Secret:
+
+```powershell
+kubectl get secret api-secret
+```
+
+Ver readiness de Green:
+
+```powershell
+kubectl describe deployment inventario-app-green
+```
+
+Explicacion corta:
+
+> Green usa un Secret para `API_KEY` y tiene `STARTUP_DELAY_SECONDS=20`, por eso Kubernetes espera a que este listo antes de enviar trafico.
+
+## Frase final
+
+La practica ya esta implementada. Lo importante para presentar es que Docker valida las pruebas antes de construir, GitHub Actions automatiza test, build, Trivy y push a GHCR, y Kubernetes permite desplegar la app. El cambio Blue-Green se demuestra cambiando el selector del Service de `version=v1` a `version=v2`.
